@@ -1,7 +1,13 @@
 #include <stdio.h>
+#include <stdint.h>
 #include <stdlib.h>
 #include <pthread.h>
 #include <unistd.h>
+#include <errno.h>
+#include <time.h>
+#include <math.h>
+#include <wiringPiI2C.h>
+#include "bme280.h"
 
 pthread_mutex_t lock;
 int consoleInput;
@@ -28,17 +34,36 @@ void *ReadConsoleInput()
     while(1);
 }
 
-void* DisplayValueToConsole()
+void* ReadSensors()
 {
     int lastValue=0;
     do
     {
         pthread_mutex_lock(&lock);
-        if(consoleInput != lastValue)
+        int fd = wiringPiI2CSetup(BME280_ADDRESS);
+        if(fd < 0) 
         {
-            lastValue = consoleInput;
-            printf("\nThe value changed to %d \n\n",lastValue);
+            printf("Device not found");
+            return -1;
         }
+        bme280_calib_data cal;
+        readCalibrationData(fd, &cal);
+
+        wiringPiI2CWriteReg8(fd, 0xf2, 0x01);   // humidity oversampling x 1
+        wiringPiI2CWriteReg8(fd, 0xf4, 0x25);   // pressure and temperature oversampling x 1, mode normal
+
+        bme280_raw_data raw;
+        getRawData(fd, &raw);
+    
+        int32_t t_fine = getTemperatureCalibration(&cal, raw.temperature);
+        float t = compensateTemperature(t_fine); // C
+        float p = compensatePressure(raw.pressure, &cal, t_fine) / 100; // hPa
+        float h = compensateHumidity(raw.humidity, &cal, t_fine);       // %
+        float a = getAltitude(p);                         // meters
+
+        // printf("{\"sensor\":\"bme280\", \"humidity\":%.2f, \"pressure\":%.2f,"
+        // " \"temperature\":%.2f, \"altitude\":%.2f, \"timestamp\":%d}\n",
+        // h, p, t, a, (int)time(NULL));
         pthread_mutex_unlock(&lock);
         sleep(1);
     }
@@ -55,10 +80,10 @@ int main(void)
     }
 
     pthread_create(&t1, NULL, ReadConsoleInput, NULL);
-    pthread_create(&t2, NULL, DisplayValueToConsole, NULL);
+    pthread_create(&t2, NULL, ReadSensors, NULL);
 
     pthread_join(t1, NULL);
     pthread_join(t2, NULL);
-    
+
     return 0;
 }

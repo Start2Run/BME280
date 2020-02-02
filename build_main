@@ -1,0 +1,2 @@
+gcc -o main main.c bme280.c -lwiringPi -lm -pthread
+./main
