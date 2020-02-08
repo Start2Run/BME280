@@ -1,4 +1,4 @@
-//https://ops.tips/gists/a-minimal-tcp-client-in-c/
+//This library is based on the code found at https://ops.tips/gists/a-minimal-tcp-client-in-c/
 
 #include <arpa/inet.h>
 #include <stdio.h>
@@ -7,27 +7,33 @@
 #include <string.h>
 #include "tcp-client.h"
 
-int main()
-{
-	char message[24];
-	printf("Enter the sever IP address: "); 
-	scanf("%s", &address);
+int                ret = 0;
+int                conn_fd;
+int                port = 9000;
+char address[24] = "127.0.0.1";
+struct sockaddr_in server_addr = {0};
 
-	printf("Enter port number: "); 
-	scanf("%d", &port);
+// int main()
+// {
+// 	char message[24];
+// 	printf("Enter the sever IP address: "); 
+// 	scanf("%s", &address);
 
-    if(connectClient(address,port)==-1)
-	{
-		return -1;
-	}
+// 	printf("Enter port number: "); 
+// 	scanf("%d", &port);
 
-    printf("\n Enter a message: "); 
-    scanf("%s", message);
-    sendMessage(message);
+//     if(connectClient(address,port)==-1)
+// 	{
+// 		return -1;
+// 	}
+
+//     printf("\n Enter a message: "); 
+//     scanf("%s", message);
+//     sendMessage(message);
     
-    disconnectClient;
-    return 0;
-}
+//     disconnectClient;
+//     return 0;
+// }
 
 int connectClient(char* address, int port)
 {
