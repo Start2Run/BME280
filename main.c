@@ -13,8 +13,8 @@
 #include "bme280.h"
 #include "tcp-client.h"
 
-pthread_mutex_t lockTempDesMutex,lockSensorValuesMutex;
-sem_t timerLockSemaphore;
+pthread_mutex_t lockTempDesMutex,lockSensorValuesMutex,lockSendMessageMutex;
+sem_t timerLockSensorSemaphore, timerLockPowerSemaphore;
 float tempDesired,tempRoom=0;
 
 void *ReadConsoleInput()
@@ -36,7 +36,11 @@ void *ReadConsoleInput()
 
             char tempDesString[10];
             sprintf(tempDesString,"TD%.2f\n",number);
-            sendMessage(tempDesString);
+            
+            pthread_mutex_lock(&lockSendMessageMutex);
+                sendMessage(tempDesString);
+            pthread_mutex_unlock(&lockSendMessageMutex);
+            
             memset(tempDesString, 0, strlen(tempDesString));
         }
         sleep(1);
@@ -49,7 +53,7 @@ void* ReadSensors()
     int lastValue=0;
     do
     {
-        sem_wait(&timerLockSemaphore);
+        sem_wait(&timerLockSensorSemaphore);
         int fd = wiringPiI2CSetup(BME280_ADDRESS);
         if(fd < 0) 
         {
@@ -88,8 +92,11 @@ void* ReadSensors()
         strcat(message,"\n");
         strcat(message,humidity);
         strcat(message,"\n");
-        sendMessage(message);
-
+        
+        pthread_mutex_lock(&lockSendMessageMutex);
+                sendMessage(message);
+        pthread_mutex_unlock(&lockSendMessageMutex);
+       
         //Clear message
         memset(message, 0, strlen(message));
     }
@@ -100,7 +107,7 @@ void* Power()
 {
     do
     {
-        sem_wait(&timerLockSemaphore);
+        sem_wait(&timerLockPowerSemaphore);
         float tempR,tempD,power;
         pthread_mutex_lock(&lockTempDesMutex);
             tempD=tempDesired;
@@ -120,18 +127,22 @@ void* Power()
         }
         char powerString[10];
         sprintf(powerString,"PW%.2f\n",power);
-        sendMessage(powerString);
+        
+        pthread_mutex_lock(&lockSendMessageMutex);
+                sendMessage(powerString);
+        pthread_mutex_unlock(&lockSendMessageMutex);
+        
         memset(powerString, 0, strlen(powerString));
     }
     while(1);
-    sem_wait(&timerLockSemaphore);
 }
 
 void* Timer()
 {
     while(1)
     {
-        sem_post(&timerLockSemaphore);
+        sem_post(&timerLockSensorSemaphore);
+        sem_post(&timerLockPowerSemaphore);
         sleep(5);
     }
 }
@@ -150,13 +161,14 @@ int main(void)
 	}
 
     pthread_t t1,t2,t3,t4;
-    if(pthread_mutex_init(&lockTempDesMutex, NULL) != 0 || pthread_mutex_init(&lockSensorValuesMutex, NULL) != 0 )
+    if(pthread_mutex_init(&lockTempDesMutex, NULL) != 0 || pthread_mutex_init(&lockSensorValuesMutex, NULL) != 0 || pthread_mutex_init(&lockSendMessageMutex, NULL) != 0  )
     {
        printf("Mutex initialization failed.\n");
        return 1;
     }
 
-    sem_init(&timerLockSemaphore, 0, 1);
+    sem_init(&timerLockSensorSemaphore, 0, 1);
+    sem_init(&timerLockPowerSemaphore, 0, 1);
 
     pthread_attr_t custom_sched_attr_H,custom_sched_attr_M,custom_sched_attr_L;	
     int fifo_max_prio, fifo_min_prio, fifo_mid_prio;	
@@ -197,6 +209,7 @@ int main(void)
     pthread_join(t3, NULL);
     pthread_join(t4, NULL);
 
-    //sem_destroy(&timerLockSemaphore);
+    sem_destroy(&timerLockSensorSemaphore);
+    sem_destroy(&timerLockPowerSemaphore);
     return 0;
 }
